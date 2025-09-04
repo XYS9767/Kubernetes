@@ -90,6 +90,7 @@
     - libseccomp
     - conntrack-tools                 # ipvs 模式需要
     - bash-completion                 # bash命令补全工具，需要重新登录服务器生效
+    - python-netaddr
     state: latest
 
 - name: 重新启动 crond 避免因修改时区而导致的作业错乱问题
