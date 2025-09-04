@@ -1,0 +1,123 @@
+- name: 清理所有旧的 Docker CE 软件源配置
+  shell: |
+    find /etc/yum.repos.d/ -name "*docker*" -delete
+    yum clean all
+    yum clean metadata
+    yum clean dbcache
+    rm -rf /var/cache/yum/*
+  ignore_errors: true
+
+- name: 添加 Docker yum 仓库
+  yum_repository:
+    name: docker-ce-stable
+    file: docker-ce
+    description: Docker CE Stable - $basearch
+    baseurl: "{{ docker_yum_repo }}"
+    enabled: no
+    gpgcheck: no
+    state: present
+
+- name: 验证软件源配置
+  shell: yum repolist --enablerepo=docker-ce-stable
+  register: repo_check
+  failed_when: false
+
+- name: 显示软件源信息
+  debug:
+    msg: "Repository check result: {{ repo_check.stdout }}"
+
+- name: 检查当前 container-selinux 版本
+  shell: rpm -q container-selinux --queryformat "%{VERSION}-%{RELEASE}"
+  register: current_selinux_version
+  failed_when: false
+
+- name: 显示当前 container-selinux 版本
+  debug:
+    msg: "Current container-selinux version: {{ current_selinux_version.stdout | default('not installed') }}"
+
+- name: 强制安装最新版本的 container-selinux（CentOS 7）
+  shell: |
+    yum remove -y container-selinux || true
+    yum install -y --enablerepo=extras container-selinux || \
+    yum install -y http://mirror.centos.org/centos/7/extras/x86_64/Packages/container-selinux-2.119.2-1.911c772.el7_8.noarch.rpm || \
+    yum install -y http://mirrors.cloud.tencent.com/centos/7/extras/x86_64/Packages/container-selinux-2.119.2-1.911c772.el7_8.noarch.rpm
+  when: ansible_distribution_major_version == "7"
+  ignore_errors: false
+
+- name: 安装 container-selinux （CentOS 8+）
+  yum:
+    name: container-selinux
+    state: latest
+    enablerepo: "*"
+  when: ansible_distribution_major_version|int >= 8
+  ignore_errors: false
+
+- name: 验证 container-selinux 最终版本
+  shell: rpm -q container-selinux --queryformat "%{EPOCH}:%{VERSION}-%{RELEASE}"
+  register: final_selinux_version
+  failed_when: false
+
+- name: 显示最终 container-selinux 版本
+  debug:
+    msg: "Final container-selinux version: {{ final_selinux_version.stdout }}"
+
+- name: 检查版本是否满足要求
+  fail:
+    msg: "container-selinux version {{ final_selinux_version.stdout }} does not meet requirement >= 2:2.74"
+  when: 
+    - final_selinux_version.rc == 0
+    - not (final_selinux_version.stdout is version('2:2.74', '>='))
+
+- name: 清理 yum 缓存以确保依赖解析正确
+  shell: |
+    yum clean all
+    yum makecache --enablerepo=docker-ce-stable
+  ignore_errors: true
+
+- name: 安装 containerd (尝试默认版本)
+  yum:
+    name: 
+    - "containerd.io-{{ containerd_version.split('-')[0] }}"
+    state: present
+    enablerepo: docker-ce-stable
+    disable_gpg_check: yes
+  environment:
+    PYTHONHTTPSVERIFY: 0
+  register: containerd_install_result
+  ignore_errors: true
+
+- name: 安装 containerd (降级到兼容版本 1.6.19)
+  yum:
+    name: 
+    - "containerd.io-1.6.19"
+    state: present
+    enablerepo: docker-ce-stable
+    disable_gpg_check: yes
+  environment:
+    PYTHONHTTPSVERIFY: 0
+  when: containerd_install_result.failed | default(false)
+  register: containerd_downgrade_result
+  ignore_errors: true
+
+- name: 安装 containerd (最后尝试 - 1.6.18)
+  yum:
+    name: 
+    - "containerd.io-1.6.18"
+    state: present
+    enablerepo: docker-ce-stable
+    disable_gpg_check: yes
+  environment:
+    PYTHONHTTPSVERIFY: 0
+  when: 
+    - containerd_install_result.failed | default(false)
+    - containerd_downgrade_result.failed | default(false)
+  ignore_errors: true
+
+- name: 验证 containerd 安装状态
+  shell: rpm -q containerd.io
+  register: containerd_check
+  failed_when: containerd_check.rc != 0
+
+- name: 显示 containerd 安装信息
+  debug:
+    msg: "Containerd installation status: {{ containerd_check.stdout }}"

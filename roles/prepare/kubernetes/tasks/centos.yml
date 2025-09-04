@@ -1,0 +1,41 @@
+- name: 添加 Kubernetes yum 仓库
+  yum_repository:
+    name: kubernetes
+    file: kubernetes
+    description: Kubernetes
+    baseurl: "{{ kubernetes_yum_repo }}"
+    enabled: yes
+    gpgcheck: no
+    state: present
+
+- name: 检查可用的 kubernetes 包版本
+  shell: yum list kubectl --showduplicates | head -10
+  register: available_kubectl_versions
+  ignore_errors: yes
+
+- name: 显示可用版本信息
+  debug:
+    msg: "Available kubectl versions: {{ available_kubectl_versions.stdout_lines }}"
+  when: available_kubectl_versions.stdout_lines is defined
+
+- name: 清理 yum 未完成事务
+  shell: |
+    yum-complete-transaction --cleanup-only || true
+    yum clean all
+    yum makecache
+  ignore_errors: yes
+
+- name: 安装 kubeadm kubelet kubectl
+  yum:
+    name: 
+    - kubectl
+    - kubelet  
+    - kubeadm
+    state: present
+    disable_gpg_check: yes
+
+- name: 安装 kubernetes-cni
+  yum:
+    name: kubernetes-cni
+    state: present
+  ignore_errors: yes

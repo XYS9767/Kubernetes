@@ -1,0 +1,12 @@
+# 节点初始主备状态
+lb_keepalived_state: "{% if inventory_hostname == groups['lb'][0] %}MASTER{% else %}BACKUP{% endif %}"
+# 其他 Keepalived 节点的单点传播 IP
+lb_keepalived_unicast_peers: >-
+  {%- for host in groups['lb'] -%}
+  {%- if hostvars[host]['ansible_host'] is defined -%}
+  '{{ hostvars[host]['ansible_host'] }}'
+  {%- else -%}
+  '{{ host }}'
+  {%- endif -%}
+  {%- if not loop.last -%},{%- endif -%}
+  {%- endfor -%}

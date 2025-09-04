@@ -1,0 +1,6 @@
+# 安装基础插件
+- hosts: 
+  - kube-master[0]
+  roles:
+  - prepare/variables
+  - plugins/cert-manager

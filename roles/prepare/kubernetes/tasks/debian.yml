@@ -1,0 +1,44 @@
+- name: 生成 Kubernetes GPG 公钥
+  copy:
+    src: kubernetes.gpg
+    dest: /tmp/kubernetes.gpg
+    owner: root
+    mode: 0644
+
+- name: 添加 Kubernetes GPG 公钥
+  shell: apt-key add /tmp/kubernetes.gpg
+
+- name: 添加 Kubernetes apt 仓库
+  apt_repository:
+    repo: "{{ kubernetes_apt_repo }}"
+    state: present
+
+- name: 检查可用的 kubernetes 包版本
+  shell: apt-cache madison kubectl | head -10
+  register: available_kubectl_versions
+  ignore_errors: yes
+
+- name: 显示可用版本信息
+  debug:
+    msg: "Available kubectl versions: {{ available_kubectl_versions.stdout_lines }}"
+  when: available_kubectl_versions.stdout_lines is defined
+
+- name: 更新 apt 缓存
+  apt:
+    update_cache: yes
+
+- name: 安装 kubeadm kubelet kubectl
+  apt:
+    name:
+    - kubectl
+    - kubelet
+    - kubeadm
+    state: present
+    allow_unauthenticated: true
+
+- name: 安装 kubernetes-cni
+  apt:
+    name: kubernetes-cni
+    state: present
+    allow_unauthenticated: true
+  ignore_errors: yes
